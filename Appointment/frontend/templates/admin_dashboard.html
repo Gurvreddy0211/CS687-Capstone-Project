@@ -551,6 +551,8 @@ data.forEach(a=>{
 
 waitTimes.push(a.wait_time)
 
+queues.push(a.patients_ahead_dynamic || 0) 
+
 hours.push(a.hour)
 
 if(a.no_show_prediction==1) noshow++
@@ -601,15 +603,61 @@ const avg=waitTimes.reduce((a,b)=>a+b,0)/data.length
 
 document.getElementById("avgWait").innerText=avg.toFixed(1)+" min"
 
-document.getElementById("queueLength").innerText=Math.max(...queues)
+let today = new Date().toISOString().split("T")[0]
+
+let pendingCount = data.filter(a =>
+a.status === "pending" &&
+a.appointment_date === today
+).length
+
+document.getElementById("queueLength").innerText = pendingCount
 
 document.getElementById("noshowRate").innerText=((noshow/data.length)*100).toFixed(1)+"%"
 
-const sorted=data.sort((a,b)=>a.hour-b.hour)
+let grouped = {}
 
-const hours_sorted=sorted.map(a=>a.hour)
-const wait_sorted=sorted.map(a=>a.wait_time)
-const queue_sorted=sorted.map(a=>a.patients_ahead_dynamic || 0)
+data.forEach(a=>{
+
+let key = a.appointment_date + " " + a.hour
+
+if(!grouped[key]){
+grouped[key] = {
+wait: [],
+queue: []
+}
+}
+
+grouped[key].wait.push(a.wait_time)
+grouped[key].queue.push(a.patients_ahead_dynamic || 0)
+
+})
+
+let hours_sorted = []
+let wait_sorted = []
+let queue_sorted = []
+
+for(let k in grouped){
+
+hours_sorted.push(k)
+
+let avgWait = grouped[k].wait.reduce((a,b)=>a+b,0)/grouped[k].wait.length
+let maxQueue = Math.max(...grouped[k].queue)
+
+wait_sorted.push(avgWait)
+queue_sorted.push(maxQueue)
+}
+
+let combined = hours_sorted.map((h,i)=>({
+key: h,
+wait: wait_sorted[i],
+queue: queue_sorted[i]
+}))
+
+combined.sort((a,b)=> new Date(a.key) - new Date(b.key))
+
+hours_sorted = combined.map(x=>x.key)
+wait_sorted = combined.map(x=>x.wait)
+queue_sorted = combined.map(x=>x.queue)
 
 updateCharts(hours_sorted,wait_sorted,queue_sorted)
 
@@ -739,11 +787,9 @@ window.location="/login.html"
 
 loadAppointments()
 loadCounters()
-loadNowServing()
 
 setInterval(loadAppointments,5000)
 setInterval(loadCounters,5000)
-setInterval(loadNowServing,5000)
 
 
 let rescheduleId = null
